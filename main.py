@@ -413,9 +413,10 @@ def evaluar(precio):
 
     log(f"XAU={precio:.2f}  v5={v5:+.1f if v5 else 'N/D'}  RSI={rsi_v}  EMA9={e9}  IT calculando...")
 
-    # Necesitamos al menos 30 registros para señales confiables
-    if len(ps) < 30:
-        log(f"Historial insuficiente: {len(ps)}/30 validos")
+    # CAMBIO: Esperar historial completo (180) antes de evaluar
+    # Asi evitamos alertas falsas al arrancar por datos incompletos
+    if len(ps) < 180:
+        log(f"Acumulando historial: {len(ps)}/180 — sin alertas hasta completar")
         return
 
     s = calcular_senal(precio, v1, v5, v15, e9, e21, e20, e50, rsi_v)
