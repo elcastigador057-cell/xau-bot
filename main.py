@@ -16,7 +16,8 @@ from datetime import datetime, timezone
 # CONFIGURACION — variables de entorno en Railway
 # ══════════════════════════════════════════════════════════
 TOKEN        = os.environ.get("TELEGRAM_TOKEN", "8804236118:AAEsOWK0sk8ZAcUTXAD8ZYWiMm5OGPn07Xs")
-CHAT_ID      = os.environ.get("CHAT_ID",        "1842727203")
+# CAMBIO: soporte para multiples chat IDs separados por coma
+CHAT_IDS     = [c.strip() for c in os.environ.get("CHAT_ID", "1842727203").split(",") if c.strip()]
 TD_KEYS      = [k.strip() for k in os.environ.get("TWELVEDATA_KEYS", "").split(",") if k.strip()]
 SOPORTE_ENV  = float(os.environ.get("SOPORTE", "0"))   # soporte fijo, 0 = desactivado
 INTERVALO    = 15        # segundos entre ticks
@@ -75,19 +76,20 @@ def en_cooldown(id_cd, seg=None):
     return False
 
 def telegram(msg):
-    """Envia mensaje a Telegram."""
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"},
-            timeout=10
-        )
-        if r.status_code == 200:
-            log(f"TG enviado: {msg[:50].strip()}")
-        else:
-            log(f"TG error {r.status_code}: {r.text[:80]}")
-    except Exception as e:
-        log(f"TG excepcion: {e}")
+    """Envia mensaje a todos los chat IDs configurados."""
+    for cid in CHAT_IDS:
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                json={"chat_id": cid, "text": msg, "parse_mode": "HTML"},
+                timeout=10
+            )
+            if r.status_code == 200:
+                log(f"TG OK -> {cid}: {msg[:40].strip()}")
+            else:
+                log(f"TG error {r.status_code} -> {cid}: {r.text[:60]}")
+        except Exception as e:
+            log(f"TG excepcion -> {cid}: {e}")
 
 # ══════════════════════════════════════════════════════════
 # FETCH PRECIO XAU
