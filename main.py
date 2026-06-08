@@ -29,10 +29,12 @@ UMBRAL_V5_MEDIA   = 10   # pts en 5 min para señal media
 
 # Cooldowns — cuanto tiempo esperar antes de repetir cada tipo de alerta
 CD = {
-    "oportunidad_compra": 600,   # 10 min — la señal mas importante
+    "oportunidad_compra": 600,   # 10 min
     "oportunidad_venta":  600,
     "impulso_fuerte":     300,   # 5 min
     "impulso_medio":      480,   # 8 min
+    "tendencia_lenta_baj":1200,  # 20 min — caida gradual 30m
+    "tendencia_lenta_alc":1200,
     "soporte_roto":       300,
     "rebote_soporte":     300,
     "resumen":           1800,   # resumen cada 30 min
@@ -175,7 +177,9 @@ def get_velocidad(minutos):
     ahora = time.time()
     target = ahora - minutos * 60
     mejor = min(validos, key=lambda r: abs(r[1] - target), default=None)
-    if not mejor or abs(mejor[1] - target) > minutos * 60 * 1.5:
+    # Para ventanas largas (30 min) permitir margen mayor
+    margen = minutos * 60 * (2.0 if minutos >= 30 else 1.5)
+    if not mejor or abs(mejor[1] - target) > margen:
         return None
     return round(validos[-1][0] - mejor[0], 2)
 
@@ -374,6 +378,32 @@ def msg_rebote_soporte(precio, sop, rsi_val):
         f"⏰ {hora_txt()}"
     )
 
+def msg_tendencia_lenta(precio, v30, v5, rsi_val, direccion):
+    """Alerta para movimientos graduales detectados en ventana de 30 min."""
+    hora = hora_txt()
+    if direccion == "baj":
+        return (
+            f"📉 <b>CAIDA GRADUAL — XAU/USD</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"Precio: <b>{precio:.2f}</b>\n"
+            f"Caida 30 min: <b>{v30:.1f} pts</b>\n"
+            f"Velocidad 5 min: {v5:+.1f} pts\n"
+            f"RSI: {rsi_val or 'N/D'}\n"
+            f"⚠️ Tendencia bajista sostenida — no es un spike\n"
+            f"⏰ {hora}"
+        )
+    else:
+        return (
+            f"📈 <b>SUBIDA GRADUAL — XAU/USD</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"Precio: <b>{precio:.2f}</b>\n"
+            f"Subida 30 min: <b>+{v30:.1f} pts</b>\n"
+            f"Velocidad 5 min: {v5:+.1f} pts\n"
+            f"RSI: {rsi_val or 'N/D'}\n"
+            f"✅ Tendencia alcista sostenida\n"
+            f"⏰ {hora}"
+        )
+
 def msg_resumen(precio, s, hist_len):
     it_txt = (
         "🔴 Venta fuerte" if s['it'] < 30 else
@@ -464,7 +494,19 @@ def evaluar(precio):
             telegram(msg_impulso_fuerte(precio, v5, v15 or 0, dir_imp))
         return
 
-    # ── 6. Resumen periodico (cada 30 min) ───────────────
+    # ── 6. Tendencia lenta — caida o subida gradual en 30 min ─────────────
+    # Detecta movimientos como una caida de 47 pts en 2 horas
+    # Umbral: 25 pts en 30 min aunque sea gradual
+    v30 = get_velocidad(30)
+    if v30 is not None:
+        if v30 <= -25 and not en_cooldown("tendencia_lenta_baj"):
+            telegram(msg_tendencia_lenta(precio, v30, v5 or 0, rsi_v, "baj"))
+            log(f"Alerta tendencia lenta bajista: {v30} pts en 30 min")
+        elif v30 >= 25 and not en_cooldown("tendencia_lenta_alc"):
+            telegram(msg_tendencia_lenta(precio, v30, v5 or 0, rsi_v, "alc"))
+            log(f"Alerta tendencia lenta alcista: {v30} pts en 30 min")
+
+    # ── 7. Resumen periodico (cada 30 min) ───────────────
     if not en_cooldown("resumen"):
         telegram(msg_resumen(precio, s, len(ps)))
 
@@ -486,7 +528,8 @@ def main():
         "━━━━━━━━━━━━━━━━━━━\n"
         f"⏱ Intervalo: cada {INTERVALO} segundos\n"
         f"🗂 Buffer: 180 registros (15 min)\n"
-        f"🛡 Filtro anomalias: >2% entre ticks = ignorado"
+        f"🛡 Filtro anomalias: >2% entre ticks = ignorado\n"
+        f"📉 Nuevo: deteccion caida gradual en ventana 30 min"
     )
 
     while True:
