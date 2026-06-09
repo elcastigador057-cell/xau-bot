@@ -293,6 +293,9 @@ def analizar(precio, v5, v15, v30, e9, e21, e20, e50, rsi_v):
 def msg_entrada(dir, precio, score, razones, sl, tp, rr, v5, v15, v30, rsi_v):
     sl_pts  = round(abs(precio - sl), 2)
     tp_pts  = round(abs(tp - precio), 2)
+    # XM: 1 Troy Ounce = $1 por punto en ORO
+    sl_usd  = round(sl_pts * 1.0, 2)
+    tp_usd  = round(tp_pts * 1.0, 2)
     emoji   = "🟢" if dir == "compra" else "🔴"
     titulo  = "ENTRADA COMPRA" if dir == "compra" else "ENTRADA VENTA"
     calidad = "🔥 Muy alta" if score >= 85 else "✅ Alta" if score >= 75 else "👍 Buena"
@@ -307,8 +310,8 @@ def msg_entrada(dir, precio, score, razones, sl, tp, rr, v5, v15, v30, rsi_v):
         f"⏱ 5m: {v5_txt} pts  |  15m: {v15_txt} pts  |  30m: {v30_txt} pts\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"💡 Entrada sugerida: <b>{precio + (0.30 if dir=='compra' else -0.30):.2f}</b>\n"
-        f"🎯 Take Profit: <b>{tp:.2f}</b>  (+{tp_pts:.1f} pts)\n"
-        f"🛑 Stop Loss: <b>{sl:.2f}</b>  (-{sl_pts:.1f} pts)\n"
+        f"🎯 Take Profit: <b>{tp:.2f}</b>  (+{tp_pts:.1f} pts  ≈ <b>+${tp_usd:.2f} USD</b>)\n"
+        f"🛑 Stop Loss:   <b>{sl:.2f}</b>  (-{sl_pts:.1f} pts  ≈ <b>-${sl_usd:.2f} USD</b>)\n"
         f"⚖️ Ratio R:R  1:{rr}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         + "\n".join(f"  • {r}" for r in razones[:4]) + "\n"
