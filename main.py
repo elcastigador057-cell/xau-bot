@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════╗
-║     CODIGO DE ORO — Bot XAU/USD v2.0 para Railway       ║
+║     CODIGO DE ORO — Bot XAU/USD v3.0 para Railway       ║
 ║  Filosofia: pocas alertas, todas de calidad             ║
 ║  Solo avisa cuando hay contexto claro de entrada        ║
 ╚══════════════════════════════════════════════════════════╝
@@ -24,6 +24,7 @@ HIST_MAX  = 360     # 360 x 15s = 90 minutos de historial
 CD = {
     "entrada_compra":  1800,   # 30 min entre señales de compra
     "entrada_venta":   1800,   # 30 min entre señales de venta
+    "retroceso_baj":    900,   # 15 min entre alertas de retroceso bajista
     "soporte_roto":     600,   # 10 min
     "rebote_soporte":   600,
     "resumen":         3600,   # resumen cada 1 hora (solo informativo)
@@ -210,7 +211,7 @@ def analizar(precio, v5, v15, v30, e9, e21, e20, e50, rsi_v):
     if v5 > 3:
         score_c += 25
         razones_c.append(f"Giro alcista en 5m: +{v5:.1f} pts")
-    elif v5 < -3:
+    elif v5 < -2:  # CAMBIO v3: mas sensible para detectar giros bajistas
         score_v += 25
         razones_v.append(f"Giro bajista en 5m: {v5:.1f} pts")
     else:
@@ -320,6 +321,22 @@ def msg_entrada(dir, precio, score, razones, sl, tp, rr, v5, v15, v30, rsi_v):
         f"⏰ {hora_txt()} — Revisar vela actual antes de entrar"
     )
 
+def msg_retroceso_bajista(precio, v5, v15, v30, rsi_v):
+    """Alerta intermedia: no es venta confirmada, es aviso de correccion."""
+    return (
+        f"🔶 <b>POSIBLE RETROCESO — XAU/USD</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Precio: <b>{precio:.2f}</b>\n"
+        f"⏱ 5m: {v5:+.1f} pts  |  15m: {v15:+.1f} pts  |  30m: {v30:+.1f} pts\n"
+        f"📊 RSI: {rsi_v or 'N/D'}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ No es señal de venta confirmada\n"
+        f"  • Si tienes compra abierta: proteger ganancias\n"
+        f"  • Si buscas entrada: esperar mejor precio\n"
+        f"  • Posible correccion bajista en curso\n"
+        f"⏰ {hora_txt()}"
+    )
+
 def msg_soporte_roto(precio, sop, v5):
     return (
         f"🚨 <b>SOPORTE ROTO — XAU/USD</b>\n"
@@ -373,9 +390,9 @@ def evaluar(precio):
     v30_txt = f"{v30:+.1f}" if v30 is not None else "N/D"
     log(f"XAU={precio:.2f}  v5={v5_txt}  v30={v30_txt}  RSI={rsi_v}  hist={len(ps)}")
 
-    # Necesitamos al menos 5 minutos de datos reales (20 ticks a 15s)
-    if len(ps) < 20:
-        log(f"Acumulando datos: {len(ps)}/20")
+    # CAMBIO v3: minimo 60 ticks (15 min) para que v30 tenga datos suficientes
+    if len(ps) < 60:
+        log(f"Acumulando datos: {len(ps)}/60")
         return
 
     # ── 1. Soporte roto ──
@@ -408,7 +425,20 @@ def evaluar(precio):
                               v5 or 0, v15 or 0, v30 or 0, rsi_v))
         return
 
-    # ── 4. Resumen horario (solo informativo) ──
+    # ── 4. Alerta de retroceso bajista (advertencia, no señal de venta) ──
+    # Se activa cuando: v30 positivo (venia subiendo) + v5 negativo (empezo a caer)
+    # pero la señal de venta completa aun no se cumplio
+    # Util para: proteger compras abiertas o esperar mejor entrada
+    if (v30 is not None and v30 > 5 and
+        v5 is not None and v5 < -2 and
+        dir != "venta"):   # solo si no ya salio señal de venta
+        if not peek_cooldown("retroceso_baj"):
+            en_cooldown("retroceso_baj")
+            telegram(msg_retroceso_bajista(
+                precio, v5, v15 or 0, v30, rsi_v
+            ))
+
+    # ── 5. Resumen horario (solo informativo) ──
     if not peek_cooldown("resumen"):
         en_cooldown("resumen")
         telegram(msg_resumen(precio, dir, score,
@@ -418,9 +448,9 @@ def evaluar(precio):
 # LOOP PRINCIPAL
 # ══════════════════════════════════════════════════════════
 def main():
-    log("═══ Codigo de Oro XAU Bot v2.0 arrancando ═══")
+    log("═══ Codigo de Oro XAU Bot v3.0 arrancando ═══")
     telegram(
-        "✅ <b>Bot XAU/USD (ORO) v2.0 activo</b>\n"
+        "✅ <b>Bot XAU/USD (ORO) v3.0 activo</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "🔍 Monitoreando XAU/USD 24/7\n"
         "📊 Analisis: EMA 9/21/20/50 + RSI + Impulso 5m/15m/30m\n"
@@ -430,6 +460,7 @@ def main():
         "  • COMPRA: lleva bajando + giro al alza confirmado\n"
         "  • VENTA: lleva subiendo + giro a la baja confirmado\n"
         "  • Cooldown 30 min entre señales del mismo tipo\n"
+        "  • 🔶 Alerta retroceso bajista (aviso, no venta)\n"
         "  • Resumen informativo cada 1 hora\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"⏱ Intervalo: cada {INTERVALO}s  |  Buffer: {HIST_MAX} ticks (90 min)"
